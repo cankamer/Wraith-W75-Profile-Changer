@@ -255,14 +255,16 @@ class Monitor:
                     self.in_game, self.reason = self.mode == "game", "elle"
 
                 now = time.monotonic()
-                if self.in_game == synced:
+                need_switch = self.in_game != synced
+                if not need_switch:
                     wait_since = None
                 elif wait_since is None:
                     wait_since = now
                 # Yükleme ~1,5 sn klavyenin ayarlarını yeniden yazar: tuşa basılıyken ya da bir önceki
                 # yüklemenin hemen ardından yapma (basılı tuş 5 sn'den uzun tutulursa yine de yükle)
-                blocked = now < max(retry_at, earliest) or (any_key_down() and now - wait_since < 5)
-                if self.in_game != synced and not blocked:
+                blocked = need_switch and (now < max(retry_at, earliest)
+                                           or (any_key_down() and now - wait_since < 5))
+                if need_switch and not blocked:
                     target = cfg["game_profile"] if self.in_game else cfg["normal_profile"]
                     try:
                         set_profile(target)

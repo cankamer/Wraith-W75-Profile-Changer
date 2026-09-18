@@ -1,0 +1,9 @@
+# Kişisel ayarlar ve kayıtlı profiller (herkes kendi profilini tanımlar)
+config.json
+profiles.json
+log.txt
+icon.ico
+*.tmp
+
+__pycache__/
+*.pyc

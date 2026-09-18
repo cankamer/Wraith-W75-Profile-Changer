@@ -13,6 +13,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 import winreg
 from pathlib import Path
 
@@ -288,27 +289,57 @@ class Monitor:
             self.stop.wait(cfg["poll_seconds"])
 
 
-def run_command():
-    exe = Path(sys.executable).with_name("pythonw.exe")
-    return f'"{exe}" "{Path(__file__).resolve()}"'
+# Başlangıçta çalıştırma, Run kaydı yerine oturum açma görevidir: bazı bilgisayarlarda Windows Run
+# girdisini hiç çalıştırmıyor, Görev Zamanlayıcı ise yönetici izni olmadan da güvenilir çalışıyor.
+TASK_NAME = "WraithProfileChanger"
+NO_WINDOW = subprocess.CREATE_NO_WINDOW
 
 
 def startup_enabled():
-    try:
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run") as k:
-            winreg.QueryValueEx(k, APP)
-            return True
-    except FileNotFoundError:
-        return False
+    result = subprocess.run(["schtasks", "/Query", "/TN", TASK_NAME], capture_output=True, creationflags=NO_WINDOW)
+    return result.returncode == 0
+
+
+def remove_legacy_run_entry():
+    """Önceki sürümlerin yazdığı Run girdisini ve onay kaydını siler."""
+    for key_path, name in ((r"Software\Microsoft\Windows\CurrentVersion\Run", APP),
+                           (r"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run", APP)):
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE) as k:
+                winreg.DeleteValue(k, name)
+        except FileNotFoundError:
+            pass
 
 
 def toggle_startup():
-    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run",
-                        0, winreg.KEY_SET_VALUE) as k:
-        if startup_enabled():
-            winreg.DeleteValue(k, APP)
-        else:
-            winreg.SetValueEx(k, APP, 0, winreg.REG_SZ, run_command())
+    """Oturum açma görevini kurar ya da siler; başarısız olursa OSError fırlatır."""
+    if startup_enabled():
+        result = subprocess.run(["schtasks", "/Delete", "/TN", TASK_NAME, "/F"], capture_output=True,
+                                text=True, creationflags=NO_WINDOW)
+        if result.returncode != 0:
+            raise OSError(result.stderr.strip() or "görev silinemedi")
+        remove_legacy_run_entry()
+        return
+
+    def quote(text):  # PowerShell tek tırnaklı dize
+        return "'" + str(text).replace("'", "''") + "'"
+
+    exe = Path(sys.executable).with_name("pythonw.exe")
+    script = Path(__file__).resolve()
+    ps = f"""
+$me = "$env:USERDOMAIN\\$env:USERNAME"
+$action = New-ScheduledTaskAction -Execute {quote(exe)} -Argument {quote(f'"{script}" --from-task')} -WorkingDirectory {quote(script.parent)}
+$trigger = New-ScheduledTaskTrigger -AtLogOn -User $me
+$trigger.Delay = 'PT10S'
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -ExecutionTimeLimit ([TimeSpan]::Zero)
+$principal = New-ScheduledTaskPrincipal -UserId $me -LogonType Interactive -RunLevel Limited
+Register-ScheduledTask -TaskName {quote(TASK_NAME)} -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force -ErrorAction Stop | Out-Null
+"""
+    result = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+                            capture_output=True, text=True, creationflags=NO_WINDOW)
+    if result.returncode != 0:
+        raise OSError(result.stderr.strip() or "görev oluşturulamadı")
+    remove_legacy_run_entry()
 
 
 def running_apps():
@@ -415,7 +446,7 @@ def profile_wizard(root, name, title, wording, on_saved):
 
 def settings_window():
     import tkinter as tk
-    from tkinter import filedialog, ttk
+    from tkinter import filedialog, messagebox, ttk
 
     ctypes.windll.kernel32.CreateMutexW(None, False, f"Local\\{APP}Settings")
     if ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
@@ -493,8 +524,12 @@ def settings_window():
     startup_var = tk.BooleanVar(value=startup_enabled())
 
     def on_startup():
-        if startup_var.get() != startup_enabled():
-            toggle_startup()
+        try:
+            if startup_var.get() != startup_enabled():
+                toggle_startup()
+        except OSError as e:
+            messagebox.showerror("Başlangıç ayarı değiştirilemedi", str(e), parent=root)
+        startup_var.set(startup_enabled())  # kutuyu gerçek duruma eşitle
 
     prof_box = ttk.LabelFrame(frm, text="Klavye profilleri", padding=8)
     prof_box.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(6, 8))
@@ -548,8 +583,10 @@ def main():
         settings_window()
         return
 
+    log(f"başlatıldı pid={os.getpid()} argv={sys.argv[1:]} cwd={os.getcwd()}")
     mutex = ctypes.windll.kernel32.CreateMutexW(None, False, f"Local\\{APP}")
     if ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+        log("zaten çalışıyor, çıkılıyor")
         return
 
     icons = tray_icons()
@@ -564,6 +601,12 @@ def main():
         mon.stop.set()
         icon.stop()
 
+    def on_toggle_startup(icon, item):
+        try:
+            toggle_startup()
+        except OSError as e:
+            log(f"başlangıç ayarı değiştirilemedi: {e}")
+
     def open_settings(icon, item):
         pythonw = Path(sys.executable).with_name("pythonw.exe")
         subprocess.Popen([str(pythonw), str(Path(__file__).resolve()), "--settings"])
@@ -576,7 +619,7 @@ def main():
         pystray.MenuItem("Oyun profili (elle)", choose("game"), checked=lambda i: mon.mode == "game", radio=True),
         pystray.MenuItem("Normal profil (elle)", choose("normal"), checked=lambda i: mon.mode == "normal", radio=True),
         pystray.Menu.SEPARATOR,
-        pystray.MenuItem("Windows ile başlat", lambda i, m: toggle_startup(), checked=lambda i: startup_enabled()),
+        pystray.MenuItem("Windows ile başlat", on_toggle_startup, checked=lambda i: startup_enabled()),
         pystray.MenuItem("Çıkış", quit_app),
     )
     mon.icon = pystray.Icon(APP, icons[False], "Wraith otomatik profil", menu)
@@ -587,4 +630,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:  # pythonw'de konsol yok; başlangıçta çökerse nedeni log.txt'ye yaz
+        log("çöktü:\n" + traceback.format_exc())
+        raise

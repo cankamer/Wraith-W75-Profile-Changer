@@ -86,10 +86,16 @@ The tray icon menu:
 | Otomatik | Follows the focused application (default) |
 | Oyun profili (elle) | Forces the game profile |
 | Normal profil (elle) | Forces the normal profile |
-| Windows ile başlat | Adds or removes the app from Windows startup |
+| Windows ile başlat | Creates or removes the sign-in task that starts the app |
 | Çıkış | Quits |
 
 In the settings window you can add applications by choosing an `.exe` file or picking from the running programs, remove them, redefine the two profiles, toggle automatic detection and toggle startup.
+
+### Starting with Windows
+
+The **Windows ile başlat** option (tray menu or settings window) creates a scheduled task named `WraithProfileChanger` that starts the app ten seconds after you sign in. It runs under your own account and needs no administrator rights. Turning the option off deletes the task.
+
+A task is used instead of the usual `Run` registry entry because on some machines Windows never starts `Run` entries. You can inspect or remove the task in Task Scheduler. Every start is recorded in `log.txt`.
 
 ### How a game is recognised
 
@@ -144,6 +150,8 @@ If a key ever stops responding, unplugging and replugging the keyboard restores 
 **A game is not detected.** Focus the game, open the settings window, choose **Çalışanlardan seç...** and add it. Alternatively add its executable name to `games` in `config.json`.
 
 **The game profile looks outdated.** You changed it on the website after recording it. Record it again with the wizard.
+
+**The app does not start after signing in.** Make sure **Windows ile başlat** is ticked, wait about fifteen seconds after signing in, and check that the `WraithProfileChanger` task exists in Task Scheduler. `log.txt` contains a `başlatıldı` (started) line for every start, and a traceback if the app crashed on startup.
 
 **Nothing arrives in the wizard.** Check that you pasted the code into the console of the `wraith.software` tab, that the keyboard is connected on that page, and that you clicked a profile after pasting.
 

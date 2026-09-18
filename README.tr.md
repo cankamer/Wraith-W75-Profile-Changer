@@ -86,10 +86,16 @@ Tepsi simgesi menüsü:
 | Otomatik | Odaklı uygulamayı izler (varsayılan) |
 | Oyun profili (elle) | Oyun profilini zorlar |
 | Normal profil (elle) | Normal profili zorlar |
-| Windows ile başlat | Uygulamayı Windows başlangıcına ekler ya da çıkarır |
+| Windows ile başlat | Uygulamayı başlatan oturum açma görevini oluşturur ya da siler |
 | Çıkış | Uygulamayı kapatır |
 
 Ayarlar penceresinde `.exe` dosyası seçerek ya da çalışan programlardan seçerek uygulama ekleyebilir, kaldırabilir, iki profili yeniden tanımlayabilir, otomatik algılamayı ve başlangıçta çalışmayı açıp kapatabilirsin.
+
+### Windows ile başlatma
+
+**Windows ile başlat** seçeneği (tepsi menüsü ya da ayarlar penceresi), oturum açtıktan on saniye sonra uygulamayı başlatan `WraithProfileChanger` adlı bir zamanlanmış görev oluşturur. Görev kendi hesabınla çalışır ve yönetici izni gerektirmez. Seçeneği kapatınca görev silinir.
+
+Yaygın `Run` kayıt girdisi yerine görev kullanılır, çünkü bazı bilgisayarlarda Windows `Run` girdilerini hiç başlatmaz. Görevi Görev Zamanlayıcı'dan inceleyebilir ya da silebilirsin. Her başlatma `log.txt` dosyasına yazılır.
 
 ### Oyun nasıl tanınır
 
@@ -144,6 +150,8 @@ Bir tuş yanıt vermemeye başlarsa, klavyeyi çıkarıp takmak normal durumunu 
 **Bir oyun algılanmıyor.** Oyuna odaklan, ayarlar penceresini aç, **Çalışanlardan seç...** ile ekle. Ya da exe adını `config.json` içindeki `games` listesine yaz.
 
 **Oyun profili eski görünüyor.** Kaydettikten sonra sitede değiştirdin. Sihirbazla yeniden kaydet.
+
+**Uygulama oturum açınca başlamıyor.** **Windows ile başlat** kutusunun işaretli olduğundan emin ol, oturum açtıktan sonra yaklaşık on beş saniye bekle ve Görev Zamanlayıcı'da `WraithProfileChanger` görevinin var olduğunu kontrol et. `log.txt` her başlatma için bir `başlatıldı` satırı, başlangıçta çökme olursa hata dökümünü içerir.
 
 **Sihirbaza hiçbir şey ulaşmıyor.** Kodu `wraith.software` sekmesinin konsoluna yapıştırdığını, o sayfada klavyenin bağlı olduğunu ve yapıştırdıktan sonra bir profile tıkladığını kontrol et.
 
